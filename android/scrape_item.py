@@ -23,22 +23,13 @@ def screen_texts(d):
     return [n.get("text") for n in root.iter("node") if n.get("text")]
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--serial")
-    ap.add_argument("--buy-text", default="立即购买", help="button that opens the size sheet")
-    ap.add_argument("--chart-text", default="尺码推荐", help="link text on the size sheet that opens the 尺码助手 chart")
-    ap.add_argument("--out", default="out/item.json")
-    a = ap.parse_args()
-    d = u2.connect(a.serial)
-
+def scrape_current(d, buy_text="立即购买", chart_text="尺码推荐"):
+    """Scrape the product page currently open in the app."""
     item = {"title": parse_title(screen_texts(d))}
-
-    if d(textContains=a.buy_text).click_exists(timeout=3):  # opens size sheet only
+    if d(textContains=buy_text).click_exists(timeout=3):  # opens size sheet only
         time.sleep(2)
-        sheet = screen_texts(d)
-        item["sizes"] = parse_sizes(sheet)
-        if d(textContains=a.chart_text).click_exists(timeout=2):
+        item["sizes"] = parse_sizes(screen_texts(d))
+        if d(textContains=chart_text).click_exists(timeout=2):
             time.sleep(2)
             chart, stale = {}, 0
             while stale < 2:  # the table scrolls: collect until no new rows
@@ -53,6 +44,19 @@ def main():
             item["size_chart"] = list(chart.values())
             d.press("back")
         d.press("back")  # close the sheet
+    return item
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--serial")
+    ap.add_argument("--buy-text", default="立即购买", help="button that opens the size sheet")
+    ap.add_argument("--chart-text", default="尺码推荐", help="link text on the size sheet that opens the 尺码助手 chart")
+    ap.add_argument("--out", default="out/item.json")
+    a = ap.parse_args()
+    d = u2.connect(a.serial)
+    item = scrape_current(d, a.buy_text, a.chart_text)
+    Path(a.out).parent.mkdir(exist_ok=True)
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(item, f, ensure_ascii=False, indent=1)
     print(json.dumps(item, ensure_ascii=False, indent=1))
