@@ -13,6 +13,16 @@ nothing here bypasses SSL pinning, request signing or anti-bot checks.
 
 The app may detect emulators or limit accounts; use at your own risk and respect Dewu's terms.
 
+### Real phone (recommended over an emulator)
+1. On the phone: Settings -> About -> tap Build number 7 times -> Developer options -> enable USB debugging.
+2. Connect by USB, accept the prompt, check `adb devices` (or `python -m uiautomator2 init`).
+3. Open the product list in the app, then `python android/scrape.py --serial <id from adb devices>`.
+
+### Sizes and specs
+`python android/scrape.py --details` opens each new card, reads `detail_fields` from
+`android/selectors.json` (tune them with `dump.py` on a product page), and goes back.
+It pauses 30-90 s every `--break-every` products (default 100) to keep load low.
+
 ## 2. Public web pages (Playwright)
 ```
 playwright install chromium
