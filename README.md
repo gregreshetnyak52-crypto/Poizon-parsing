@@ -30,3 +30,8 @@ python -m dewu_parser.cli discover "<public listing url>"
 python -m dewu_parser.cli export
 ```
 Field names in `dewu_parser/extract.py` are guesses; tune after the first run.
+
+## One product: title, price per size, size chart
+Open a product page on an **Android** device, then `python android/scrape_item.py`.
+Parsing is text-based (`android/parse_screen.py`, tested on real screenshots: `cd android && python -c "import test_parse_screen as t; t.test_sizes(); t.test_title()"`).
+The size chart is saved as raw texts until its screen is known. iPhone is not supported by uiautomator2.
