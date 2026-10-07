@@ -16,3 +16,14 @@ def test_sizes():
 
 def test_title():
     assert parse_title(PAGE).startswith("Timberland添柏岚 Martin")
+
+
+def test_size_chart():
+    from parse_screen import parse_size_chart
+    t = ["尺码助手", "欧码EU", "尺码说明", "US美码", "适合脚长(cm)",
+         "39.5", "建议买小一码", "6.5", "24.5", "40", "建议买小一码", "7", "25",
+         "推荐", "46", "建议买小一码", "12", "30", "47.5", "建议买小一码", "13", "31"]
+    r = parse_size_chart(t)
+    assert [x["eu"] for x in r] == ["39.5", "40", "46", "47.5"]
+    assert r[0] == {"eu": "39.5", "note": "建议买小一码", "us": "6.5", "foot_cm": 24.5}
+    assert r[-1]["foot_cm"] == 31.0

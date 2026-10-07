@@ -31,3 +31,21 @@ def parse_title(texts):
         if seen_price and len(t) >= 8 and "¥" not in t and "￥" not in t:
             return t
     return None
+
+
+NUM_RE = re.compile(r"^\d{1,3}(?:\.\d)?$")
+
+
+def parse_size_chart(texts):
+    """尺码助手 table: rows of <EU> <note> <US> <foot length cm>. Skips header and 推荐 badge."""
+    cells = [t.strip() for t in texts if t and t.strip()]
+    rows, i = [], 0
+    while i < len(cells):
+        if NUM_RE.match(cells[i]) and i + 3 < len(cells) and not NUM_RE.match(cells[i + 1]) \
+                and NUM_RE.match(cells[i + 2]) and NUM_RE.match(cells[i + 3]):
+            rows.append({"eu": cells[i], "note": cells[i + 1], "us": cells[i + 2],
+                         "foot_cm": float(cells[i + 3])})
+            i += 4
+        else:
+            i += 1
+    return rows

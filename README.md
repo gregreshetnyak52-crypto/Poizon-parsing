@@ -34,4 +34,4 @@ Field names in `dewu_parser/extract.py` are guesses; tune after the first run.
 ## One product: title, price per size, size chart
 Open a product page on an **Android** device, then `python android/scrape_item.py`.
 Parsing is text-based (`android/parse_screen.py`, tested on real screenshots: `cd android && python -c "import test_parse_screen as t; t.test_sizes(); t.test_title()"`).
-The size chart is saved as raw texts until its screen is known. iPhone is not supported by uiautomator2.
+Size chart (尺码助手: EU, note, US, foot length cm) is parsed and scrolled; the link text defaults to 尺码推荐 (unconfirmed, tune with --chart-text). iPhone is not supported by uiautomator2.
