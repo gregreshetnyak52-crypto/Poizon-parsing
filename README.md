@@ -52,3 +52,14 @@ python ios/scrape_item_ios.py --udid <UDID>      # UDID: idevice_id -l  or Xcode
 Output: `out/item_ios.json` (same format as Android). Bundle id default `com.siwuai.duapp` is unverified; check with `ideviceinstaller -l`.
 If texts come back empty (the app draws its own UI), run `python ios/dump_ios.py <UDID>` and inspect `out/ios_source.xml`;
 the fallback is screenshot + OCR.
+
+## Automatic crawl (iPhone)
+Open a product LIST in the app (category, brand or search results), then:
+```
+python ios/auto.py --udid <UDID> --max 200
+```
+For every product on the list it opens the card, reads title + price per size + size chart, goes back
+(edge-swipe), scrolls, and continues. Results are appended to `out/products.jsonl` (one JSON per line);
+re-running resumes and skips products already saved. It pauses 30-90 s every `--break-every` (30) products
+and stops if it cannot find the list after going back. Cards are found by their `¥price` text
+(`list_cards` in `ios/auto.py`, unit-tested on a synthetic tree) - tune it from `ios/dump_ios.py` output if your list differs.

@@ -53,6 +53,38 @@ class Screen:
         self.tap_xy(0.5, 0.08)  # dimmed area above a bottom sheet dismisses it
 
 
+def scrape_current(s, buy_text="立即购买", chart_text="尺码推荐"):
+    """Scrape the product page currently open in the app."""
+    item = {"title": parse_title(s.texts())}
+    if s.tap_text(buy_text):
+        time.sleep(2)
+        item["sizes"] = parse_sizes(s.texts())
+        if s.tap_text(chart_text):
+            time.sleep(2)
+            chart, stale = {}, 0
+            while stale < 2:
+                new = 0
+                for r in parse_size_chart(s.texts()):
+                    if r["eu"] not in chart:
+                        chart[r["eu"]] = r
+                        new += 1
+                stale = stale + 1 if new == 0 else 0
+                s.swipe_up()
+                time.sleep(1)
+            item["size_chart"] = list(chart.values())
+            s.close_sheet()
+        s.close_sheet()
+    return item
+
+
+def connect(udid, bundle_id, server="http://127.0.0.1:4723"):
+    opts = XCUITestOptions()
+    opts.udid = udid
+    opts.bundle_id = bundle_id
+    opts.no_reset = True  # keep login and the open screen
+    return webdriver.Remote(server, options=opts)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--udid", required=True)
@@ -63,33 +95,10 @@ def main():
     ap.add_argument("--out", default="out/item_ios.json")
     a = ap.parse_args()
 
-    opts = XCUITestOptions()
-    opts.udid = a.udid
-    opts.bundle_id = a.bundle_id
-    opts.no_reset = True  # keep login and the open screen
-    opts.set_capability("appium:includeSafariInWebviews", False)
-    drv = webdriver.Remote(a.server, options=opts)
+    drv = connect(a.udid, a.bundle_id, a.server)
     try:
         s = Screen(drv)
-        item = {"title": parse_title(s.texts())}
-        if s.tap_text(a.buy_text):
-            time.sleep(2)
-            item["sizes"] = parse_sizes(s.texts())
-            if s.tap_text(a.chart_text):
-                time.sleep(2)
-                chart, stale = {}, 0
-                while stale < 2:
-                    new = 0
-                    for r in parse_size_chart(s.texts()):
-                        if r["eu"] not in chart:
-                            chart[r["eu"]] = r
-                            new += 1
-                    stale = stale + 1 if new == 0 else 0
-                    s.swipe_up()
-                    time.sleep(1)
-                item["size_chart"] = list(chart.values())
-                s.close_sheet()
-            s.close_sheet()
+        item = scrape_current(s, a.buy_text, a.chart_text)
     finally:
         drv.quit()
     Path(a.out).parent.mkdir(exist_ok=True)
