@@ -33,5 +33,22 @@ Field names in `dewu_parser/extract.py` are guesses; tune after the first run.
 
 ## One product: title, price per size, size chart
 Open a product page on an **Android** device, then `python android/scrape_item.py`.
-Parsing is text-based (`android/parse_screen.py`, tested on real screenshots: `cd android && python -c "import test_parse_screen as t; t.test_sizes(); t.test_title()"`).
-Size chart (尺码助手: EU, note, US, foot length cm) is parsed and scrolled; the link text defaults to 尺码推荐 (unconfirmed, tune with --chart-text). iPhone is not supported by uiautomator2.
+Parsing is text-based (`android/parse_screen.py`, tested on real screenshots: `cd common && python -c "import test_parse_screen as t; t.test_sizes(); t.test_title(); t.test_size_chart()"`).
+Size chart (尺码助手: EU, note, US, foot length cm) is parsed and scrolled; the link text defaults to 尺码推荐 (unconfirmed, tune with --chart-text). For iPhone use ios/ (below).
+
+## iPhone (Appium + XCUITest, needs a Mac)
+One-time setup:
+1. Xcode installed; iPhone connected by USB, Developer Mode on (Settings -> Privacy & Security), trusted.
+2. `brew install node && npm i -g appium && appium driver install xcuitest`
+3. WebDriverAgent must be signed once with your Apple ID: open
+   `~/.appium/node_modules/appium-xcuitest-driver/node_modules/appium-webdriveragent/WebDriverAgent.xcodeproj`
+   in Xcode, set your Team and a unique bundle id for the WebDriverAgentRunner target (free Apple ID: re-sign every 7 days).
+4. `appium` (leave running), `pip install -r requirements.txt`.
+
+Run (product page open in the app):
+```
+python ios/scrape_item_ios.py --udid <UDID>      # UDID: idevice_id -l  or Xcode > Devices
+```
+Output: `out/item_ios.json` (same format as Android). Bundle id default `com.siwuai.duapp` is unverified; check with `ideviceinstaller -l`.
+If texts come back empty (the app draws its own UI), run `python ios/dump_ios.py <UDID>` and inspect `out/ios_source.xml`;
+the fallback is screenshot + OCR.

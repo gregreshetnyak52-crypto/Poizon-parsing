@@ -6,12 +6,15 @@ or pays) and the size-chart view, reading on-screen texts; then goes back.
 Usage: python android/scrape_item.py [--serial ID] [--chart-text 尺码表] [--out out/item.json]
 """
 import argparse
+import sys
+from pathlib import Path
 import json
 import time
 import xml.etree.ElementTree as ET
 
 import uiautomator2 as u2
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "common"))
 from parse_screen import parse_size_chart, parse_sizes, parse_title
 
 
