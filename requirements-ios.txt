@@ -1,0 +1,2 @@
+Appium-Python-Client>=4.0
+openpyxl>=3.1
