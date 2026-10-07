@@ -62,6 +62,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--udid", required=True)
     ap.add_argument("--bundle-id", default="com.siwuai.duapp")
+    ap.add_argument("--team-id")
+    ap.add_argument("--wda-bundle-id")
     ap.add_argument("--max", type=int, default=200)
     ap.add_argument("--break-every", type=int, default=30)
     ap.add_argument("--out", default="out/products.jsonl")
@@ -73,7 +75,7 @@ def main():
     if out.exists():
         seen = {json.loads(l)["key"] for l in out.read_text(encoding="utf-8").splitlines() if l.strip()}
     done = 0
-    drv = connect(a.udid, a.bundle_id)
+    drv = connect(a.udid, a.bundle_id, team_id=a.team_id, wda_bundle_id=a.wda_bundle_id)
     try:
         s = Screen(drv)
         stale = 0

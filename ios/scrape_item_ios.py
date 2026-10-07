@@ -77,11 +77,16 @@ def scrape_current(s, buy_text="立即购买", chart_text="尺码推荐"):
     return item
 
 
-def connect(udid, bundle_id, server="http://127.0.0.1:4723"):
+def connect(udid, bundle_id, server="http://127.0.0.1:4723", team_id=None, wda_bundle_id=None):
     opts = XCUITestOptions()
     opts.udid = udid
     opts.bundle_id = bundle_id
     opts.no_reset = True  # keep login and the open screen
+    if team_id:  # lets Appium sign WebDriverAgent itself (Apple Team ID, 10 chars)
+        opts.xcode_org_id = team_id
+        opts.xcode_signing_id = "Apple Development"
+    if wda_bundle_id:
+        opts.updated_wda_bundle_id = wda_bundle_id
     return webdriver.Remote(server, options=opts)
 
 
@@ -90,12 +95,14 @@ def main():
     ap.add_argument("--udid", required=True)
     ap.add_argument("--bundle-id", default="com.siwuai.duapp", help="check with: ideviceinstaller -l")
     ap.add_argument("--server", default="http://127.0.0.1:4723")
+    ap.add_argument("--team-id", help="Apple Team ID, if WebDriverAgent is not signed in Xcode")
+    ap.add_argument("--wda-bundle-id", help="unique bundle id for WebDriverAgentRunner, e.g. com.you.wda")
     ap.add_argument("--buy-text", default="立即购买")
     ap.add_argument("--chart-text", default="尺码推荐")
     ap.add_argument("--out", default="out/item_ios.json")
     a = ap.parse_args()
 
-    drv = connect(a.udid, a.bundle_id, a.server)
+    drv = connect(a.udid, a.bundle_id, a.server, a.team_id, a.wda_bundle_id)
     try:
         s = Screen(drv)
         item = scrape_current(s, a.buy_text, a.chart_text)

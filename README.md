@@ -1,65 +1,289 @@
-# Poizon-parsing
+# Poizon-parsing — сбор данных из приложения Dewu (得物 / Poizon)
 
-Free tools for collecting Dewu (Poizon) catalog data. Status: **scaffold, untested against the live app/site**.
+Бесплатный инструмент, который **управляет настоящим приложением Dewu на вашем телефоне**
+(как человек: открывает товар, листает, нажимает) и **читает то, что приложение показывает на экране**.
+Для каждого товара он собирает:
 
-## 1. Android emulator (app data)
-Reads what the real app renders (UI automation). The app makes its own signed requests;
-nothing here bypasses SSL pinning, request signing or anti-bot checks.
+- название;
+- цену для **каждого размера** (¥, юани);
+- **размерную сетку** («尺码助手»: EU, пояснение, US, длина стопы в см).
 
-1. Run an Android emulator (Android Studio AVD / Genymotion), install Dewu, log in, open a category list.
-2. `pip install -r requirements.txt`
-3. `mkdir -p out && python android/dump.py` and tune `android/selectors.json` from `out/hierarchy.xml`.
-4. `python android/scrape.py --max 500` -> `out/app_products.json|csv`.
+> **Статус: рабочий каркас, не проверенный на живом приложении.**
+> Парсеры текста проверены тестами на реальных скриншотах. Но сам запуск на телефоне
+> (Appium, нажатия, свайпы) писался «вслепую» — на первом запуске возможны мелкие правки
+> (см. раздел «Если что-то не работает»). Присылайте вывод ошибок — подстроим.
 
-The app may detect emulators or limit accounts; use at your own risk and respect Dewu's terms.
+---
 
-### Real phone (recommended over an emulator)
-1. On the phone: Settings -> About -> tap Build number 7 times -> Developer options -> enable USB debugging.
-2. Connect by USB, accept the prompt, check `adb devices` (or `python -m uiautomator2 init`).
-3. Open the product list in the app, then `python android/scrape.py --serial <id from adb devices>`.
+## Содержание
 
-### Sizes and specs
-`python android/scrape.py --details` opens each new card, reads `detail_fields` from
-`android/selectors.json` (tune them with `dump.py` on a product page), and goes back.
-It pauses 30-90 s every `--break-every` products (default 100) to keep load low.
+1. [Что это и как работает](#1-что-это-и-как-работает)
+2. [Чего инструмент НЕ делает](#2-чего-инструмент-не-делает)
+3. [Структура репозитория](#3-структура-репозитория)
+4. [iPhone: установка (один раз)](#4-iphone-установка-один-раз)
+5. [iPhone: запуск](#5-iphone-запуск)
+6. [Что получится на выходе](#6-что-получится-на-выходе)
+7. [Если что-то не работает](#7-если-что-то-не-работает)
+8. [Android](#8-android)
+9. [Веб-страницы (Playwright)](#9-веб-страницы-playwright)
+10. [Тесты](#10-тесты)
+11. [Риски и ограничения](#11-риски-и-ограничения)
 
-## 2. Public web pages (Playwright)
+---
+
+## 1. Что это и как работает
+
+Dewu защищает свой API подписью запросов, поэтому «чистый» парсинг сервера не вариант.
+Здесь другой подход — **автоматизация интерфейса**:
+
 ```
+Python-скрипт ──► Appium (сервер на Mac) ──► WebDriverAgent (на iPhone) ──► приложение Dewu
+      ▲                                                                           │
+      └─────────── тексты с экрана (название, ¥цены, таблица размеров) ◄──────────┘
+```
+
+1. Приложение само делает все свои запросы и само их подписывает.
+2. Скрипт через Appium получает дерево элементов экрана и вытаскивает из него тексты.
+3. `common/parse_screen.py` превращает тексты в данные: ищет пары «размер + ¥цена» и строки таблицы размеров.
+4. Автообход (`ios/auto.py`) делает это для всех товаров в открытом списке и сохраняет результат.
+
+Что скрипт нажимает: карточку товара, кнопку «立即购买» (**только чтобы открыть список размеров**),
+ссылку на размерную сетку, кнопки закрытия, свайпы. **Размер он не выбирает, заказ не оформляет и ничего не оплачивает.**
+
+## 2. Чего инструмент НЕ делает
+
+- Не обходит защиту Dewu: не подделывает подпись запросов, не снимает SSL-pinning, не прячет автоматизацию и не маскирует устройство.
+- Не берёт данные «в обход» приложения: видно только то, что показывает ваше приложение под вашим аккаунтом.
+- Не работает без телефона с установленным Dewu и вашим входом в аккаунт.
+
+## 3. Структура репозитория
+
+```
+common/
+  parse_screen.py        разбор текстов: размеры+цены, название, размерная сетка (общий для iOS и Android)
+  test_*.py              тесты (запускать см. раздел 10)
+ios/
+  auto.py                АВТООБХОД списка товаров (то, что вам нужно в первую очередь)
+  scrape_item_ios.py     один товар: открытая страница → JSON
+  ios_screen.py          чтение текстов из дерева экрана iOS
+  dump_ios.py            диагностика: сохранить дерево экрана и скриншот
+android/                 то же для Android (uiautomator2)
+dewu_parser/             отдельный вариант для публичных веб-страниц (Playwright)
+requirements.txt         Python-зависимости
+```
+
+## 4. iPhone: установка (один раз)
+
+**Что нужно:** Mac, iPhone с установленным и авторизованным Dewu, USB-кабель, Apple ID (бесплатного хватает).
+
+### 4.1. Инструменты на Mac
+
+Откройте «Терминал» и выполните по порядку:
+
+```bash
+# 1) Xcode — установите из App Store, затем один раз запустите и примите лицензию:
+sudo xcodebuild -license accept
+xcode-select --install            # command line tools (если ещё не стоят)
+
+# 2) Homebrew (если нет): https://brew.sh
+brew install node libimobiledevice ideviceinstaller python
+
+# 3) Appium и драйвер для iOS
+npm install -g appium
+appium driver install xcuitest
+appium driver doctor xcuitest     # покажет, чего ещё не хватает
+```
+
+### 4.2. Подготовка iPhone
+
+1. Подключите iPhone по USB, разблокируйте, нажмите «Доверять этому компьютеру».
+2. **Режим разработчика:** Настройки → Конфиденциальность и безопасность → Режим разработчика → включить, телефон перезагрузится, подтвердите.
+3. Установите Dewu из App Store, войдите в аккаунт.
+4. Рекомендуется: Настройки → Экран и яркость → Автоблокировка → «Никогда» (на время работы скрипта).
+
+### 4.3. Узнать UDID телефона и bundle id приложения
+
+```bash
+idevice_id -l                     # UDID телефона
+ideviceinstaller -l | grep -i -E "dewu|得物|siwu|duapp"   # bundle id приложения
+```
+
+В скриптах по умолчанию стоит `com.siwuai.duapp` — это **неподтверждённое** значение. Если ваш отличается,
+передавайте `--bundle-id <значение>`.
+
+### 4.4. Подписать WebDriverAgent (самое «капризное» место)
+
+Appium ставит на iPhone служебное приложение WebDriverAgent (WDA). Его нужно подписать вашим Apple ID.
+Два способа — выберите **один**:
+
+**Способ А — через Xcode (надёжнее):**
+
+1. Откройте проект:
+   `~/.appium/node_modules/appium-xcuitest-driver/node_modules/appium-webdriveragent/WebDriverAgent.xcodeproj`
+   (если не найдёте: `find ~/.appium -name WebDriverAgent.xcodeproj`).
+2. Xcode → Settings → Accounts → добавьте свой Apple ID.
+3. Слева выберите проект, затем таргет **WebDriverAgentRunner** → Signing & Capabilities:
+   поставьте галочку Automatically manage signing, выберите свой **Team**,
+   в **Bundle Identifier** впишите уникальное значение, например `com.ВАШ_НИК.WebDriverAgentRunner`.
+4. Сделайте то же для таргета **IntegrationApp** (если Xcode ругается).
+5. Выберите ваш iPhone как устройство и нажмите Product → Test (⌘U) один раз — WDA установится на телефон.
+6. На iPhone: Настройки → Основные → VPN и управление устройством → ваш Apple ID → «Доверять».
+
+**Способ Б — подписать автоматически через Appium:** узнайте свой Team ID
+(developer.apple.com → Membership, 10 символов; для бесплатного ID он виден в Xcode → Accounts) и передавайте скриптам
+`--team-id ВАШ_TEAM_ID --wda-bundle-id com.ВАШ_НИК.wda`.
+
+> С бесплатным Apple ID подпись **действует 7 дней**: потом повторите шаг 4.4.5.
+
+### 4.5. Python-окружение
+
+```bash
+cd Poizon-parsing-                # папка репозитория
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## 5. iPhone: запуск
+
+В **первом** окне терминала запустите Appium и оставьте его работать:
+
+```bash
+appium
+```
+
+Во **втором** окне (с активированным `.venv`):
+
+### 5.1. Проверка на одном товаре (начните с этого!)
+
+1. На iPhone откройте в Dewu страницу любого товара.
+2. Запустите:
+
+```bash
+python ios/scrape_item_ios.py --udid ВАШ_UDID
+# при необходимости: --bundle-id ... --team-id ... --wda-bundle-id ...
+```
+
+Скрипт откроет список размеров, прочитает цены, откроет таблицу размеров, прокрутит её до конца и выведет JSON
+(сохранится в `out/item_ios.json`). Если здесь всё хорошо — переходите к автообходу.
+
+### 5.2. Автоматический обход списка
+
+1. На iPhone откройте **список товаров**: категорию, бренд или результаты поиска (там должны быть карточки с ценами «¥…»).
+2. Запустите:
+
+```bash
+python ios/auto.py --udid ВАШ_UDID --max 20
+```
+
+Что происходит:
+
+1. Скрипт находит на экране карточки по тексту цены «¥…».
+2. Нажимает первую ещё не обработанную, ждёт загрузки, снимает данные (раздел 5.1).
+3. Возвращается назад свайпом от левого края экрана.
+4. Если список не найден после возврата — **останавливается**, чтобы не бродить по приложению.
+5. Листает вниз, берёт следующие карточки. Когда новых нет 4 раза подряд — завершает.
+6. Каждый товар **сразу** дописывается в `out/products.jsonl`.
+   Если остановить (Ctrl+C) и запустить снова — уже сохранённые товары пропускаются (**возобновление**).
+7. Каждые 30 товаров (`--break-every`) — пауза 30–90 секунд, между действиями — случайные задержки.
+
+Параметры `auto.py`:
+
+| Параметр | Значение по умолчанию | Что делает |
+|---|---|---|
+| `--udid` | — (обязателен) | UDID телефона |
+| `--max` | 200 | сколько товаров собрать за запуск |
+| `--break-every` | 30 | длинная пауза после каждых N товаров (0 — выключить) |
+| `--out` | `out/products.jsonl` | файл результата |
+| `--bundle-id` | `com.siwuai.duapp` | bundle id Dewu |
+| `--team-id`, `--wda-bundle-id` | — | автоподпись WDA (способ Б из 4.4) |
+
+**Совет:** первый запуск — только на `--max 5` и на отдельном аккаунте. Убедитесь, что данные корректны, и только потом увеличивайте.
+
+## 6. Что получится на выходе
+
+`out/products.jsonl` — одна строка JSON на товар. Пример (данные с реальных скриншотов, сокращено):
+
+```json
+{
+  "title": "Timberland添柏岚 Martin 舒适防水 短筒 户外靴 男款 小麦色 宽版",
+  "sizes": [
+    {"size": "39.5", "hint": "建议买小一码", "price_cny": 628.0},
+    {"size": "43.5", "hint": "建议买小一码", "price_cny": 512.0},
+    {"size": "46",   "hint": "建议买小一码", "price_cny": 638.0}
+  ],
+  "size_chart": [
+    {"eu": "39.5", "note": "建议买小一码", "us": "6.5",  "foot_cm": 24.5},
+    {"eu": "46",   "note": "建议买小一码", "us": "12",   "foot_cm": 30.0},
+    {"eu": "47.5", "note": "建议买小一码", "us": "13",   "foot_cm": 31.0}
+  ],
+  "key": "…внутренний ключ для пропуска дубликатов…"
+}
+```
+
+Поля: `price_cny` — цена в юанях для этого размера; `hint` — пометка рядом с размером («建议买小一码» = «берите на размер меньше»);
+`foot_cm` — рекомендуемая длина стопы. Конвертировать в CSV/Excel можно любым скриптом или, например, `pandas.read_json("out/products.jsonl", lines=True)`.
+
+## 7. Если что-то не работает
+
+| Симптом | Что делать |
+|---|---|
+| `appium` пишет, что нет драйвера/зависимостей | `appium driver doctor xcuitest` и выполните то, что он просит |
+| Ошибка про подпись / `xcodebuild failed with code 65` | Повторите 4.4: Team и уникальный Bundle Identifier; проверьте «Доверять» на iPhone |
+| `Could not find a connected iOS device` | Разблокируйте телефон, нажмите «Доверять», проверьте `idevice_id -l` |
+| Приложение не запускается / не найдено | Проверьте bundle id (4.3) и передайте `--bundle-id` |
+| Работает через неделю перестало | Истекла 7-дневная подпись бесплатного Apple ID: повторите 4.4.5 |
+| Пустой результат, `title: null`, нет `sizes` | Приложение может рисовать интерфейс само, и в дереве нет текста. Выполните `python ios/dump_ios.py ВАШ_UDID`, пришлите `out/ios_source.xml` и `out/ios_screen.png` |
+| Таблица размеров не открывается | Текст ссылки другой. Передайте `--chart-text "<текст ссылки на экране>"` (в `scrape_item_ios.py`) |
+| Лист размеров не закрывается | Закрытие сделано нажатием в верхней затемнённой области; пришлите скриншот и вывод скрипта |
+| Автообход «не нашёл карточки» | Карточки ищутся по тексту «¥цена»; пришлите `ios_source.xml` экрана списка — подправим `list_cards` в `ios/auto.py` |
+| Автообход останавливается: «list screen not found after going back» | Жест «назад» не сработал; пришлите вывод — заменим на нажатие кнопки «назад» |
+
+При обращении за помощью присылайте: **вывод терминала целиком**, `ios_source.xml` и скриншот нужного экрана.
+
+## 8. Android
+
+Тот же принцип через `uiautomator2` (нужен Android-телефон с отладкой по USB или эмулятор).
+**Реальный телефон надёжнее эмулятора**, приложение может не работать на эмуляторах.
+
+```bash
+# телефон: Настройки → О телефоне → 7 раз «Номер сборки» → Для разработчиков → Отладка по USB
+pip install -r requirements.txt
+adb devices                                  # телефон должен быть в списке
+python android/scrape_item.py --serial ID    # один открытый товар → out/item.json
+python android/dump.py                       # диагностика: out/screen.png и out/hierarchy.xml
+python android/scrape.py --max 500           # простой обход списка (нужны селекторы в android/selectors.json)
+```
+
+Автообхода уровня `ios/auto.py` для Android пока нет; `android/selectors.json` содержит **примерные значения**,
+их нужно заменить на реальные из `out/hierarchy.xml`.
+
+## 9. Веб-страницы (Playwright)
+
+Отдельный инструмент для публичных страниц сайта: открывает страницу в браузере и сохраняет JSON-ответы.
+Основной каталог Dewu живёт в приложении, поэтому веб почти не даёт данных — это запасной вариант.
+
+```bash
 playwright install chromium
-python -m dewu_parser.cli discover "<public listing url>"
+python -m dewu_parser.cli discover "<адрес публичной страницы>"
 python -m dewu_parser.cli export
 ```
-Field names in `dewu_parser/extract.py` are guesses; tune after the first run.
 
-## One product: title, price per size, size chart
-Open a product page on an **Android** device, then `python android/scrape_item.py`.
-Parsing is text-based (`android/parse_screen.py`, tested on real screenshots: `cd common && python -c "import test_parse_screen as t; t.test_sizes(); t.test_title(); t.test_size_chart()"`).
-Size chart (尺码助手: EU, note, US, foot length cm) is parsed and scrolled; the link text defaults to 尺码推荐 (unconfirmed, tune with --chart-text). For iPhone use ios/ (below).
+## 10. Тесты
 
-## iPhone (Appium + XCUITest, needs a Mac)
-One-time setup:
-1. Xcode installed; iPhone connected by USB, Developer Mode on (Settings -> Privacy & Security), trusted.
-2. `brew install node && npm i -g appium && appium driver install xcuitest`
-3. WebDriverAgent must be signed once with your Apple ID: open
-   `~/.appium/node_modules/appium-xcuitest-driver/node_modules/appium-webdriveragent/WebDriverAgent.xcodeproj`
-   in Xcode, set your Team and a unique bundle id for the WebDriverAgentRunner target (free Apple ID: re-sign every 7 days).
-4. `appium` (leave running), `pip install -r requirements.txt`.
+Тесты проверяют разбор текстов на данных со скриншотов, без телефона:
 
-Run (product page open in the app):
+```bash
+cd common
+python -c "import test_parse_screen as t, test_ios_screen as i, test_list_cards as l; \
+t.test_sizes(); t.test_title(); t.test_size_chart(); i.test_texts(); l.test_cards(); print('tests pass')"
 ```
-python ios/scrape_item_ios.py --udid <UDID>      # UDID: idevice_id -l  or Xcode > Devices
-```
-Output: `out/item_ios.json` (same format as Android). Bundle id default `com.siwuai.duapp` is unverified; check with `ideviceinstaller -l`.
-If texts come back empty (the app draws its own UI), run `python ios/dump_ios.py <UDID>` and inspect `out/ios_source.xml`;
-the fallback is screenshot + OCR.
 
-## Automatic crawl (iPhone)
-Open a product LIST in the app (category, brand or search results), then:
-```
-python ios/auto.py --udid <UDID> --max 200
-```
-For every product on the list it opens the card, reads title + price per size + size chart, goes back
-(edge-swipe), scrolls, and continues. Results are appended to `out/products.jsonl` (one JSON per line);
-re-running resumes and skips products already saved. It pauses 30-90 s every `--break-every` (30) products
-and stops if it cannot find the list after going back. Cards are found by their `¥price` text
-(`list_cards` in `ios/auto.py`, unit-tested on a synthetic tree) - tune it from `ios/dump_ios.py` output if your list differs.
+## 11. Риски и ограничения
+
+- **Условия Dewu**, скорее всего, запрещают автоматический сбор данных. Используйте на свой риск.
+- **Блокировка аккаунта** возможна при автоматизации. Пауз и случайных задержек недостаточно, чтобы это исключить. Начинайте с малого и на отдельном аккаунте.
+- **Нагрузка:** не ставьте огромные `--max` и не убирайте паузы.
+- **Скорость:** это обход «как человек», примерно десятки секунд на товар. Тысячи товаров — это часы.
+- **Нестабильность:** любое обновление приложения может изменить экраны; тогда нужно подправить тексты (`--chart-text`, `--buy-text`) или правила поиска карточек.
+- Данные — только то, что приложение показывает вашему аккаунту (регион, цены и наличие зависят от аккаунта и времени).
